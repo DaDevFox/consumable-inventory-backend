@@ -4,13 +4,13 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
 	"net/http"
 	"strconv"
 
 	secure "github.com/Dentrax/obscure-go/types"
 	_ "github.com/codenotary/immudb/pkg/stdlib"
 	"github.com/gin-gonic/gin"
+	log "github.com/sirupsen/logrus"
 )
 
 // use:
@@ -50,34 +50,29 @@ func getFoods(c *gin.Context, db *sql.DB) {
 	c.IndentedJSON(http.StatusOK, foods)
 }
 
-func postAlbums(c *gin.Context, db *sql.DB) {
+func postFood(c *gin.Context, db *sql.DB) {
 	var newFood FOOD
-
-	// Call BindJSON to bind the received JSON to
-	// newAlbum.
 
 	err := c.BindJSON(&newFood)
 	if err != nil {
 		log.Fatal(err)
 	}
-	fmt.Println("Posting to food DB: " + newFood.Name + " " + strconv.Itoa(newFood.Amount) + " ")
 
 	if newFood.Name != "" {
-		// credentials.NewTLS(&tls.Config{InsecureSkipVerify: true})
 		_, err := db.Exec("INSERT INTO food(name, amount) VALUES ($1, $2)", newFood.Name, newFood.Amount)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
 
-	fmt.Println("2Posting to food DB: " + newFood.Name + " " + strconv.Itoa(newFood.Amount) + " ")
+	fmt.Println("Posting to food DB: " + newFood.Name + " " + strconv.Itoa(newFood.Amount) + " ")
 
-	// Add the new album to the slice.
 	c.IndentedJSON(http.StatusCreated, newFood)
 }
 
 func main() {
-	fmt.Println("Hello world!")
+	log.SetFormatter(&log.TextFormatter{})
+	log.Debug("Init server interface")
 
 	dbName := "defaultdb"
 	pass := secure.NewString("immudb") // DANGER: stored in code segment as of now AND open-source on github -- easy to find; get secure passthrough (e.g. CLI input) method to fully harden
@@ -86,7 +81,7 @@ func main() {
 	connStr := secure.NewString("immudb://" + user + ":" + pass.Get() + "@127.0.0.1:3322/" + dbName + "?sslmode=disable")
 	db, err := sql.Open("immudb", connStr.Get())
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
 	}
 
 	defer db.Close()
@@ -113,7 +108,7 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		postAlbums(c, db)
+		postFood(c, db)
 	})
 
 	router.Run("localhost:5000")
