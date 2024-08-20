@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
 
 	secure "github.com/Dentrax/obscure-go/types"
@@ -73,15 +74,25 @@ func postFood(c *gin.Context, db *sql.DB) {
 	c.IndentedJSON(http.StatusCreated, newFood)
 }
 
+func printHelp(){
+	log.Error("Invalid;\n\tUsage: <ip address: required> [port]")
+}
+
 func main() {
 	log.SetFormatter(&log.TextFormatter{})
 	log.Debug("Init server interface")
 
 	dbName := "defaultdb"
+
+	if len(os.Args) <= 2 {
+		printHelp()
+	} //TODO: implement port cli arg
+
+	ip := secure.NewString(os.Args[1])
 	pass := secure.NewString("immudb") // DANGER: stored in code segment as of now AND open-source on github -- easy to find; get secure passthrough (e.g. CLI input) method to fully harden
 	user := "immudb"
 
-	connStr := secure.NewString("immudb://" + user + ":" + pass.Get() + "@127.0.0.1:3322/" + dbName + "?sslmode=disable")
+	connStr := secure.NewString("immudb://" + user + ":" + pass.Get() + "@127.0.0.1:3322/" + dbName + "?sslmode=disable") // TODO: Currently API and server on the same machine; hence127.0.0.1; change in future
 	db, err := sql.Open("immudb", connStr.Get())
 	if err != nil {
 		log.Error(err)
@@ -111,7 +122,7 @@ func main() {
 		postFood(c, db)
 	})
 
-	router.Run("localhost:5000")
+	router.Run(ip.Get() + ":5000")
 
 	// alternate:
 	// opts := immudb.DefaultOptions().WithAddress("127.0.0.1").WithPort(3322)
