@@ -55,7 +55,10 @@ func postFood(c *gin.Context, db *sql.DB) {
 
 	err := c.BindJSON(&newFood)
 	if err != nil {
-		log.Fatal(err)
+		c.AbortWithStatus(400)
+		log.Info("Error while parsing JSON; malformed request")
+		log.Error(err)
+		return
 	}
 
 	if newFood.Name != "" {
@@ -97,9 +100,6 @@ func main() {
 
 	router := gin.Default()
 	router.GET("/foods", func(c *gin.Context) {
-		if err != nil {
-			log.Fatal(err)
-		}
 		getFoods(c, db)
 	})
 	router.POST("/foods", func(c *gin.Context) {
