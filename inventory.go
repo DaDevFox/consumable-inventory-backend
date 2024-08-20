@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"database/sql"
-	"fmt"
 	"net/http"
 	"os"
 	"strconv"
@@ -52,10 +51,35 @@ func getFoods(c *gin.Context, db *sql.DB) {
 	c.IndentedJSON(http.StatusOK, foods)
 }
 
-func postFood(c *gin.Context, db *sql.DB) {
-	var newFood FOOD
+func exists(db *sql.DB, food FOOD, requireIDMatch bool) bool {
+	if food.ID < 0 {
+		log.Error("POST request made with invalid (negative) id")
+		return false
+	}
 
-	err := c.BindJSON(&newFood)
+	res, err := db.Query("SELECT id, name FROM food WHERE name = " + food.Name)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	if !res.Next() {
+		return false
+	}
+
+	var id int
+	var nameOut string
+	err = res.Scan(&id, &nameOut)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	return food.ID == id || !requireIDMatch
+}
+
+func postFood(c *gin.Context, db *sql.DB) {
+	var food FOOD
+
+	err := c.BindJSON(&food)
 	if err != nil {
 		c.AbortWithStatus(400)
 		log.Info("Error while parsing JSON; malformed request")
@@ -63,14 +87,40 @@ func postFood(c *gin.Context, db *sql.DB) {
 		return
 	}
 
+	// confirm item with id & name exists
+	if !exists(db, food, true) {
+		c.AbortWithStatus(http.StatusNotFound)
+		log.Info("POST request made for resource which did not exist: id=" + strconv.Itoa(food.ID) + ", name=" + food.Name)
+	}
+
+	log.Info("POSTing name=" + food.Name + " id=" + strconv.Itoa(food.ID))
+
+	// update that item
+	_, err = db.Exec("UPSERT INTO food(id, name, amount) VALUES ($1, $2, $3)", food.ID, food.Name, food.Amount)
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func putFood(c *gin.Context, db *sql.DB) {
+	var newFood FOOD
+
+	err := c.BindJSON(&newFood)
+	if err != nil {
+		c.AbortWithStatus(http.StatusBadRequest)
+		log.Info("Error while parsing JSON; malformed request")
+		log.Error(err)
+		return
+	}
+
+	log.Debug("PUTting into food DB: " + newFood.Name + " " + strconv.Itoa(newFood.Amount))
+
 	if newFood.Name != "" {
 		_, err := db.Exec("INSERT INTO food(name, amount) VALUES ($1, $2)", newFood.Name, newFood.Amount)
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
-
-	fmt.Println("Posting to food DB: " + newFood.Name + " " + strconv.Itoa(newFood.Amount) + " ")
 
 	c.IndentedJSON(http.StatusCreated, newFood)
 }
@@ -91,12 +141,12 @@ func initDB(db *sql.DB) {
 
 	_, err = db.ExecContext(
 		context.Background(),
-		"CREATE UNIQUE INDEX IF NOT EXISTS ON food(id);",
+		"CREATE UNIQUE INDEX IF NOT EXISTS ON food(id);", // TODO: determine if this is acc necessary
 	)
 
 	_, err = db.ExecContext(
 		context.Background(),
-		"CREATE INDEX IF NOT EXISTS ON food(name);",
+		"CREATE UNIQUE INDEX IF NOT EXISTS ON food(name);",
 	)
 
 	if err != nil {
@@ -136,15 +186,14 @@ func main() {
 	router.GET("/foods", func(c *gin.Context) {
 		getFoods(c, db)
 	})
+	router.PUT("/foods", func(c *gin.Context) {
+		putFood(c, db)
+	})
 	router.POST("/foods", func(c *gin.Context) {
-
-		_, err := db.Query("SELECT * FROM food")
-		if err != nil {
-			log.Fatal(err)
-		}
 		postFood(c, db)
 	})
 
+	// TODO: set up PKI and make this RunTLS to use https
 	router.Run(selfIP.Get() + ":5000")
 
 	// alternate:
