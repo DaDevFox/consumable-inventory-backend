@@ -9,7 +9,8 @@ import (
 	"strconv"
 
 	secure "github.com/Dentrax/obscure-go/types"
-	_ "github.com/codenotary/immudb/pkg/stdlib"
+	immudb "github.com/codenotary/immudb/pkg/client"
+	"github.com/codenotary/immudb/pkg/stdlib"
 	"github.com/gin-gonic/gin"
 	log "github.com/sirupsen/logrus"
 )
@@ -74,33 +75,12 @@ func postFood(c *gin.Context, db *sql.DB) {
 	c.IndentedJSON(http.StatusCreated, newFood)
 }
 
-func printHelp(){
-	log.Error("Invalid;\n\tUsage: <ip address: required> [port]")
+func printHelp() {
+	log.Error("Invalid;\n\tUsage: <immudb server ip address:required> <ip address to run on: required> [port]")
 }
 
-func main() {
-	log.SetFormatter(&log.TextFormatter{})
-	log.Debug("Init server interface")
-
-	dbName := "defaultdb"
-
-	if len(os.Args) <= 2 {
-		printHelp()
-	} //TODO: implement port cli arg
-
-	ip := secure.NewString(os.Args[1])
-	pass := secure.NewString("immudb") // DANGER: stored in code segment as of now AND open-source on github -- easy to find; get secure passthrough (e.g. CLI input) method to fully harden
-	user := "immudb"
-
-	connStr := secure.NewString("immudb://" + user + ":" + pass.Get() + "@127.0.0.1:3322/" + dbName + "?sslmode=disable") // TODO: Currently API and server on the same machine; hence127.0.0.1; change in future
-	db, err := sql.Open("immudb", connStr.Get())
-	if err != nil {
-		log.Error(err)
-	}
-
-	defer db.Close()
-
-	_, err = db.ExecContext(
+func initDB(db *sql.DB) {
+	_, err := db.ExecContext(
 		context.Background(),
 		"CREATE TABLE IF NOT EXISTS food(id INTEGER AUTO_INCREMENT, name VARCHAR(256), amount INTEGER, PRIMARY KEY id)",
 	)
@@ -108,6 +88,49 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	_, err = db.ExecContext(
+		context.Background(),
+		"CREATE UNIQUE INDEX IF NOT EXISTS ON food(id);",
+	)
+
+	_, err = db.ExecContext(
+		context.Background(),
+		"CREATE INDEX IF NOT EXISTS ON food(name);",
+	)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+}
+
+func main() {
+	log.SetFormatter(&log.TextFormatter{})
+	log.Debug("Init server interface API")
+
+	if len(os.Args) <= 2 {
+		printHelp()
+		return
+	} //TODO: implement port cli arg
+
+	immudbIP := secure.NewString(os.Args[1])
+	selfIP := secure.NewString(os.Args[2])
+
+	pass := secure.NewString("immudb") // DANGER: stored in code segment as of now AND open-source on github -- easy to find; get secure passthrough (e.g. CLI input) method to fully harden
+	user := "immudb"
+	dbName := "defaultdb"
+
+	opts := immudb.DefaultOptions().
+		WithAddress(immudbIP.Get()).
+		WithPort(3322). // TODO: implement immudb port cli arg
+		WithDatabase(dbName).
+		WithUsername(user).
+		WithPassword(pass.Get())
+
+	db := stdlib.OpenDB(opts)
+	defer db.Close()
+
+	initDB(db)
 
 	router := gin.Default()
 	router.GET("/foods", func(c *gin.Context) {
@@ -122,7 +145,7 @@ func main() {
 		postFood(c, db)
 	})
 
-	router.Run(ip.Get() + ":5000")
+	router.Run(selfIP.Get() + ":5000")
 
 	// alternate:
 	// opts := immudb.DefaultOptions().WithAddress("127.0.0.1").WithPort(3322)
