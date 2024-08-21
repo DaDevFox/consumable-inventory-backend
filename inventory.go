@@ -11,6 +11,7 @@ import (
 	immudb "github.com/codenotary/immudb/pkg/client"
 	"github.com/codenotary/immudb/pkg/stdlib"
 	"github.com/gin-gonic/gin"
+	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
 )
 
@@ -129,6 +130,16 @@ func printHelp() {
 	log.Error("Invalid;\n\tUsage: <immudb server ip address:required> <ip address to run on: required> [port]")
 }
 
+func initAPI(){
+	err := godotenv.Load(".env")
+	if err != nil{
+		log.Fatal(err)
+	}
+
+	log.SetFormatter(&log.TextFormatter{})
+	log.Debug("Init server interface API")
+}
+
 func initDB(db *sql.DB) {
 	_, err := db.ExecContext(
 		context.Background(),
@@ -155,24 +166,24 @@ func initDB(db *sql.DB) {
 }
 
 func main() {
-	log.SetFormatter(&log.TextFormatter{})
-	log.Debug("Init server interface API")
-
 	if len(os.Args) <= 2 {
 		printHelp()
 		return
-	} //TODO: implement port cli arg
+	} //TODO: implement port cli args
+
+	initAPI()
 
 	immudbIP := secure.NewString(os.Args[1])
 	selfIP := secure.NewString(os.Args[2])
 
-	pass := secure.NewString("immudb") // DANGER: stored in code segment as of now AND open-source on github -- easy to find; get secure passthrough (e.g. CLI input) method to fully harden
-	user := "immudb"
-	dbName := "defaultdb"
+	// TODO: close the loop so that this protection actually matters (protected in memory now but acc source is right there on disk too -- need encrypted store)
+	pass := secure.NewString(os.Getenv("IMMUDB_PASSWORD")) // DANGER: stored in code segment as of now AND open-source on github -- easy to find; get secure passthrough (e.g. CLI input) method to fully harden
+	user := os.Getenv("IMMUDB_USER")
+	dbName :=os.Getenv("IMMUDB_DB_NAME") 
 
 	opts := immudb.DefaultOptions().
 		WithAddress(immudbIP.Get()).
-		WithPort(3322). // TODO: implement immudb port cli arg
+		WithPort(3322). 
 		WithDatabase(dbName).
 		WithUsername(user).
 		WithPassword(pass.Get())
