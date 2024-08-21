@@ -1,6 +1,6 @@
 module github.com/DaDevFox/consumable-inventory-backend
 
-go 1.22.5
+go 1.23
 
 require (
 	github.com/Dentrax/obscure-go v0.0.0
