@@ -1,2 +1,6 @@
+# environemnt vars
 .env
+
+# executables
 go-consumable-inventory
+consumable-inventory-backend
