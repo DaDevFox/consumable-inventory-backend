@@ -35,6 +35,10 @@ func (i *InventoryTestSuite) SetupSuite() {
 	user := os.Getenv("IMMUDB_USER")
 	dbName := os.Getenv("IMMUDB_DB_NAME")
 
+	// temp
+	t.Log(user)
+	t.Log(pass.Get())
+
 	opts := immudb.DefaultOptions().
 		WithAddress(immudbIP.Get()).
 		WithPort(3322).
