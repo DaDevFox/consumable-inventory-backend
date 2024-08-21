@@ -22,7 +22,9 @@ jobs:
 
       - name: Set up Env Vars
         run: |
-          echo "IMMUDB_PASSWORD=immudb\nIMMUDB_USER=immudb\nIMMUDB_DB_NAME=defaultdb" > .env
+          # TODO: when not default passwords; use secrets for these
+          arr=( 'IMMUDB_PASSWORD=immudb' 'IMMUDB_USER=immudb' 'IMMUDB_DB_NAME=defaultdb');
+          printf '%s\n' "${arr[@]}" >> .env
 
       - name: Set up Go
         uses: actions/setup-go@v4
