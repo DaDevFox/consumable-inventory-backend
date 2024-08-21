@@ -20,6 +20,9 @@ import (
 // https://github.com/codenotary/immudb-client-examples/tree/master/go
 // https://play.codenotary.com/?topic=cli%2Fselect&live=true
 // getAlbums responds with the list of all albums as JSON.
+//
+// EVENTUALLY:
+// https://computingpost.medium.com/run-immudb-sql-and-key-value-database-on-docker-kubernetes-15f22391dca5
 
 type FOOD struct {
 	ID     int
@@ -27,7 +30,7 @@ type FOOD struct {
 	Amount int
 }
 
-func getFoods(c *gin.Context, db *sql.DB) {
+func getFoods(db *sql.DB) []FOOD {
 	var id int
 	var name string
 	var amount int
@@ -49,7 +52,7 @@ func getFoods(c *gin.Context, db *sql.DB) {
 		foods = append(foods, FOOD{ID: id, Name: name, Amount: amount})
 	}
 
-	c.IndentedJSON(http.StatusOK, foods)
+	return foods
 }
 
 func exists(db *sql.DB, food FOOD, requireIDMatch bool) bool {
@@ -77,62 +80,43 @@ func exists(db *sql.DB, food FOOD, requireIDMatch bool) bool {
 	return food.ID == id || !requireIDMatch
 }
 
-func postFood(c *gin.Context, db *sql.DB) {
-	var food FOOD
-
-	err := c.BindJSON(&food)
-	if err != nil {
-		c.AbortWithStatus(400)
-		log.Info("Error while parsing JSON; malformed request")
-		log.Error(err)
-		return
-	}
-
+// return value used for http response codes
+func postFood(food FOOD, db *sql.DB) {
 	// confirm item with id & name exists
 	if !exists(db, food, true) {
-		c.AbortWithStatus(http.StatusNotFound)
 		log.Info("POST request made for resource which did not exist: id=" + strconv.Itoa(food.ID) + ", name=" + food.Name)
+		panic("Not found")
 	}
 
 	log.Info("POSTing name=" + food.Name + " id=" + strconv.Itoa(food.ID))
 
 	// update that item
-	_, err = db.Exec("UPSERT INTO food(id, name, amount) VALUES ($1, $2, $3)", food.ID, food.Name, food.Amount)
+	_, err := db.Exec("UPSERT INTO food(id, name, amount) VALUES ($1, $2, $3)", food.ID, food.Name, food.Amount)
 	if err != nil {
 		log.Fatal(err)
 	}
 }
 
-func putFood(c *gin.Context, db *sql.DB) {
-	var newFood FOOD
-
-	err := c.BindJSON(&newFood)
-	if err != nil {
-		c.AbortWithStatus(http.StatusBadRequest)
-		log.Info("Error while parsing JSON; malformed request")
-		log.Error(err)
-		return
-	}
+func putFood(newFood FOOD, db *sql.DB) {
 
 	log.Debug("PUTting into food DB: " + newFood.Name + " " + strconv.Itoa(newFood.Amount))
 
 	if newFood.Name != "" {
 		_, err := db.Exec("INSERT INTO food(name, amount) VALUES ($1, $2)", newFood.Name, newFood.Amount)
+		// TODO: implement resource exists panic if exists
 		if err != nil {
 			log.Fatal(err)
 		}
 	}
-
-	c.IndentedJSON(http.StatusCreated, newFood)
 }
 
 func printHelp() {
 	log.Error("Invalid;\n\tUsage: <immudb server ip address:required> <ip address to run on: required> [port]")
 }
 
-func initAPI(){
+func initAPI() {
 	err := godotenv.Load(".env")
-	if err != nil{
+	if err != nil {
 		log.Fatal(err)
 	}
 
@@ -179,11 +163,11 @@ func main() {
 	// TODO: close the loop so that this protection actually matters (protected in memory now but acc source is right there on disk too -- need encrypted store)
 	pass := secure.NewString(os.Getenv("IMMUDB_PASSWORD")) // DANGER: stored in code segment as of now AND open-source on github -- easy to find; get secure passthrough (e.g. CLI input) method to fully harden
 	user := os.Getenv("IMMUDB_USER")
-	dbName :=os.Getenv("IMMUDB_DB_NAME") 
+	dbName := os.Getenv("IMMUDB_DB_NAME")
 
 	opts := immudb.DefaultOptions().
 		WithAddress(immudbIP.Get()).
-		WithPort(3322). 
+		WithPort(3322).
 		WithDatabase(dbName).
 		WithUsername(user).
 		WithPassword(pass.Get())
@@ -195,43 +179,83 @@ func main() {
 
 	router := gin.Default()
 	router.GET("/foods", func(c *gin.Context) {
-		getFoods(c, db)
+		// always returns OK; no critical failure points
+		foods := getFoods(db)
+		c.IndentedJSON(http.StatusOK, foods)
 	})
 	router.PUT("/foods", func(c *gin.Context) {
-		putFood(c, db)
+		var food FOOD
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error("Panic!")
+				if r == "Bad request" {
+					c.AbortWithStatus(http.StatusBadRequest)
+				}
+				if r == "Resource exists" {
+					c.AbortWithStatus(http.StatusConflict)
+				}
+			} else {
+				c.IndentedJSON(http.StatusOK, food)
+			}
+		}()
+
+		err := c.BindJSON(&food)
+		if err != nil {
+			log.Info("Error while parsing JSON; malformed request")
+			log.Error(err)
+			panic("Bad request")
+		}
+		putFood(food, db)
 	})
 	router.POST("/foods", func(c *gin.Context) {
-		postFood(c, db)
+		var food FOOD
+		defer func() {
+			if r := recover(); r != nil {
+				log.Error("Panic!")
+				if r == "Bad request" {
+					c.AbortWithStatus(http.StatusBadRequest)
+				}
+				if r == "Not found" {
+					c.AbortWithStatus(http.StatusNotFound)
+				}
+			} else {
+				c.IndentedJSON(http.StatusOK, food)
+			}
+		}()
+
+		err := c.BindJSON(&food)
+		if err != nil {
+			log.Info("Error while parsing JSON; malformed request")
+			log.Error(err)
+			panic("Bad request")
+		}
+		postFood(food, db)
 	})
 
 	// TODO: set up PKI and make this RunTLS to use https
 	router.Run(selfIP.Get() + ":5000")
-
-	// alternate:
-	// opts := immudb.DefaultOptions().WithAddress("127.0.0.1").WithPort(3322)
-	// client := immudb.NewClient().WithOptions(opts)
-	//
-	// err := client.OpenSession(context.Background(), []byte(user), []byte(pass.Get()), "defaultdb")
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// // ensure connection is closed
-	// defer client.CloseSession(context.Background())
-	//
-	// // write an entry
-	// // upon submission, the SDK validates proofs and updates the local state under the hood
-	// hdr, err := client.VerifiedSet(context.Background(), []byte(key), []byte("immutable world"))
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// fmt.Printf("Sucessfully set a verified entry: ('%s', '%s') @ tx %d\n", []byte(key), []byte("immutable world"), hdr.Id)
-	//
-	// // read an entry
-	// // upon submission, the SDK validates proofs and updates the local state under the hood
-	// entry, err := client.VerifiedGet(context.Background(), []byte(key))
-	// if err != nil {
-	// 	log.Fatal(err)
-	// }
-	// fmt.Printf("Sucessfully got verified entry: ('%s', '%s') @ tx %d\n", entry.Key, entry.Value, entry.Tx)
-
 }
+
+// alternate:
+// opts := immudb.DefaultOptions().WithAddress("127.0.0.1").WithPort(3322)
+// client := immudb.NewClient().WithOptions(opts)
+//
+// err := client.OpenSession(context.Background(), []byte(user), []byte(pass.Get()), "defaultdb")
+// if err != nil {
+// 	log.Fatal(err)
+// }
+// // ensure connection is closed
+// defer client.CloseSession(context.Background())
+//
+// // write an entry
+// // upon submission, the SDK validates proofs and updates the local state under the hood
+// hdr, err := client.VerifiedSet(context.Background(), []byte(key), []byte("immutable world"))
+// if err != nil {
+// 	log.Fatal(err)
+// }
+// fmt.Printf("Sucessfully set a verified entry: ('%s', '%s') @ tx %d\n", []byte(key), []byte("immutable world"), hdr.Id)
+//
+// // read an entry
+// // upon submission, the SDK validates proofs and updates the local state under the hood
+// entry, err := client.VerifiedGet(context.Background(), []byte(key))
+// if err != nil {

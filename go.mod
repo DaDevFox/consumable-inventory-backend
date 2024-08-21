@@ -1,4 +1,4 @@
-module github.com/DaDevFox/go-consumable-inventory
+module github.com/DaDevFox/consumable-inventory-backend
 
 go 1.22.5
 
