@@ -56,7 +56,7 @@ func getFoods(db *sql.DB) []FOOD {
 }
 
 func getFood(db *sql.DB, food FOOD, requireIDMatch bool) *FOOD {
-	res, err := db.Query("SELECT id, name FROM food WHERE name=\"" + food.Name + "\"")
+	res, err := db.Query(`SELECT id, name FROM food WHERE name=\'` + food.Name + `\'`)
 	if err != nil {
 		log.Fatal(err)
 		return nil
