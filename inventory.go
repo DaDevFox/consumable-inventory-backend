@@ -6,10 +6,12 @@ import (
 	"net/http"
 	"os"
 	"strconv"
+	"time"
 
 	secure "github.com/Dentrax/obscure-go/types"
 	immudb "github.com/codenotary/immudb/pkg/client"
 	"github.com/codenotary/immudb/pkg/stdlib"
+	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 	log "github.com/sirupsen/logrus"
@@ -60,6 +62,7 @@ func getFoods(db *sql.DB) []FOOD {
 func getFood(db *sql.DB, food FOOD, requireIDMatch bool) *FOOD {
 	log.Debug("Query: " + `SELECT id, name, amount FROM food WHERE name='` + food.Name + `'`)
 	res, err := db.Query(`SELECT id, name, amount FROM food WHERE name='` + food.Name + `'`)
+	defer res.Close()
 	if err != nil {
 		log.Error(err)
 		return nil
@@ -212,6 +215,17 @@ func main() {
 	initDB(db)
 
 	router := gin.Default()
+
+	// configure cors
+	config := cors.DefaultConfig()
+	config.AllowAllOrigins = true
+	config.AllowMethods = []string{"POST", "GET", "PUT", "OPTIONS"}
+	config.AllowHeaders = []string{"Origin", "Content-Type", "Authorization", "Accept", "User-Agent", "Cache-Control", "Pragma"}
+	config.ExposeHeaders = []string{"Content-Length"}
+	config.AllowCredentials = true
+	config.MaxAge = 12 * time.Hour
+	router.Use(cors.New(config))
+
 	router.GET("/foods", func(c *gin.Context) {
 		// always returns OK; no critical failure points
 		foods := getFoods(db)
