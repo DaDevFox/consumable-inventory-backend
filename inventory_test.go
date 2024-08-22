@@ -55,27 +55,27 @@ func (i *InventoryTestSuite) SetupSuite() {
 	t.Run("Put banana", func(st *testing.T) {
 		food := FOOD{Name: "Banana", Amount: 2}
 		putFood(&food, i.db)
-		assert.Equal(st, food.ID, 0)
+		assert.Equal(st, food.ID, 1)
 	})
 	t.Run("Put apple", func(st *testing.T) {
 		food := FOOD{Name: "Apple", Amount: 0}
 		putFood(&food, i.db)
-		assert.Equal(st, food.ID, 1)
+		assert.Equal(st, food.ID, 2)
 	})
 	t.Run("Put eggs", func(st *testing.T) {
 		food := FOOD{Name: "Eggs", Amount: 1}
 		putFood(&food, i.db)
-		assert.Equal(st, food.ID, 2)
+		assert.Equal(st, food.ID, 3)
 	})
 	t.Run("Put oranges", func(st *testing.T) {
 		food := FOOD{Name: "Oranges", Amount: 0}
 		putFood(&food, i.db)
-		assert.Equal(st, food.ID, 3)
+		assert.Equal(st, food.ID, 4)
 	})
 	t.Run("Put milk", func(st *testing.T) {
 		food := FOOD{Name: "Milk", Amount: 1}
 		putFood(&food, i.db)
-		assert.Equal(st, food.ID, 4)
+		assert.Equal(st, food.ID, 5)
 	})
 }
 
@@ -87,9 +87,9 @@ func (i *InventoryTestSuite) TestPost() {
 	t := i.T()
 	food := FOOD{Name: "Apple", Amount: 2}
 	postFood(&food, i.db)
-	assert.Equal(t, food.ID, 1)
+	assert.Equal(t, food.ID, 2)
 
 	fetched := getFood(i.db, food, false)
-	assert.Equal(t, fetched.ID, 1)
+	assert.Equal(t, fetched.ID, 2)
 	assert.Equal(t, fetched.Amount, 2)
 }
