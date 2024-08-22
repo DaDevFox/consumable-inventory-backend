@@ -39,14 +39,16 @@ func getFoods(db *sql.DB) []FOOD {
 
 	rows, err := db.Query("SELECT id, name, amount FROM food")
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
+		return []FOOD{}
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		err := rows.Scan(&id, &name, &amount)
 		if err != nil {
-			log.Fatal(err)
+			log.Error(err)
+			continue
 		}
 
 		foods = append(foods, FOOD{ID: id, Name: name, Amount: amount})
@@ -58,7 +60,7 @@ func getFoods(db *sql.DB) []FOOD {
 func getFood(db *sql.DB, food FOOD, requireIDMatch bool) *FOOD {
 	res, err := db.Query(`SELECT id, name FROM food WHERE name=\'` + food.Name + `\'`)
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
 		return nil
 	}
 
@@ -71,7 +73,7 @@ func getFood(db *sql.DB, food FOOD, requireIDMatch bool) *FOOD {
 	var amount int
 	err = res.Scan(&id, &name, &amount)
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
 		return nil
 	}
 
@@ -98,9 +100,10 @@ func postFood(food FOOD, db *sql.DB) {
 	log.Info("POSTing name=" + food.Name + " id=" + strconv.Itoa(food.ID))
 
 	// update that item
-	_, err := db.Exec("UPSERT INTO food(id, name, amount) VALUES ($1, $2, $3)", food.ID, food.Name, food.Amount)
+	_, err := db.Exec(`UPSERT INTO food (id, name, amount) VALUES ($1, \'$2\', $3)`, food.ID, food.Name, food.Amount)
 	if err != nil {
-		log.Fatal(err)
+		log.Info("Error posting to DB; post may have been malformed")
+		log.Error(err)
 	}
 }
 
@@ -116,7 +119,8 @@ func putFood(newFood FOOD, db *sql.DB) {
 	if newFood.Name != "" {
 		_, err := db.Exec("INSERT INTO food(name, amount) VALUES ($1, $2)", newFood.Name, newFood.Amount)
 		if err != nil {
-			log.Fatal(err)
+			log.Info("Error putting in DB; post may have been malformed")
+			log.Error(err)
 		}
 	}
 }
