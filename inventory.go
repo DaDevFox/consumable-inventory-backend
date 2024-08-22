@@ -55,35 +55,42 @@ func getFoods(db *sql.DB) []FOOD {
 	return foods
 }
 
-func exists(db *sql.DB, food FOOD, requireIDMatch bool) bool {
-	if food.ID < 0 {
-		log.Error("POST request made with invalid (negative) id")
-		return false
-	}
-
-	res, err := db.Query("SELECT id, name FROM food WHERE name = " + food.Name)
+func getFood(db *sql.DB, food FOOD, requireIDMatch bool) *FOOD {
+	res, err := db.Query("SELECT id, name FROM food WHERE name=\"" + food.Name + "\"")
 	if err != nil {
 		log.Fatal(err)
+		return nil
 	}
 
 	if !res.Next() {
-		return false
+		return nil
 	}
 
 	var id int
-	var nameOut string
-	err = res.Scan(&id, &nameOut)
+	var name string
+	var amount int
+	err = res.Scan(&id, &name, &amount)
 	if err != nil {
 		log.Fatal(err)
+		return nil
 	}
 
-	return food.ID == id || !requireIDMatch
+	// also check unique if requireIDMatch
+	if requireIDMatch && food.ID != id {
+		return nil
+	} else {
+		return &FOOD{ID: id, Name: name, Amount: amount}
+	}
+}
+
+func foodExists(db *sql.DB, food FOOD, requireIDMatch bool) bool {
+	return getFood(db, food, requireIDMatch) != nil
 }
 
 // return value used for http response codes
 func postFood(food FOOD, db *sql.DB) {
 	// confirm item with id & name exists
-	if !exists(db, food, true) {
+	if !foodExists(db, food, true) {
 		log.Info("POST request made for resource which did not exist: id=" + strconv.Itoa(food.ID) + ", name=" + food.Name)
 		panic("Not found")
 	}
@@ -101,9 +108,13 @@ func putFood(newFood FOOD, db *sql.DB) {
 
 	log.Debug("PUTting into food DB: " + newFood.Name + " " + strconv.Itoa(newFood.Amount))
 
+	if foodExists(db, newFood, false) {
+		log.Info("PUT request made for resource which already exists: name=" + newFood.Name)
+		panic("Resource exists")
+	}
+
 	if newFood.Name != "" {
 		_, err := db.Exec("INSERT INTO food(name, amount) VALUES ($1, $2)", newFood.Name, newFood.Amount)
-		// TODO: implement resource exists panic if exists
 		if err != nil {
 			log.Fatal(err)
 		}
