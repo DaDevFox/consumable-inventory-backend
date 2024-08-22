@@ -52,20 +52,30 @@ func (i *InventoryTestSuite) SetupSuite() {
 	t.Log("DB initied and table created")
 	t.Log("Inserting sample data (as subtests)")
 
-	t.Run("Put banana", func(t *testing.T) {
-		putFood(FOOD{Name: "Banana", Amount: 0}, i.db)
+	t.Run("Put banana", func(st *testing.T) {
+		food := FOOD{Name: "Banana", Amount: 2}
+		putFood(&food, i.db)
+		assert.Equal(st, food.ID, 1)
 	})
-	t.Run("Put apple", func(t *testing.T) {
-		putFood(FOOD{Name: "Apple", Amount: 0}, i.db)
+	t.Run("Put apple", func(st *testing.T) {
+		food := FOOD{Name: "Apple", Amount: 0}
+		putFood(&food, i.db)
+		assert.Equal(st, food.ID, 2)
 	})
-	t.Run("Put eggs", func(t *testing.T) {
-		putFood(FOOD{Name: "Eggs", Amount: 0}, i.db)
+	t.Run("Put eggs", func(st *testing.T) {
+		food := FOOD{Name: "Eggs", Amount: 1}
+		putFood(&food, i.db)
+		assert.Equal(st, food.ID, 3)
 	})
-	t.Run("Put oranges", func(t *testing.T) {
-		putFood(FOOD{Name: "Oranges", Amount: 0}, i.db)
+	t.Run("Put oranges", func(st *testing.T) {
+		food := FOOD{Name: "Oranges", Amount: 0}
+		putFood(&food, i.db)
+		assert.Equal(st, food.ID, 4)
 	})
-	t.Run("Put milk", func(t *testing.T) {
-		putFood(FOOD{Name: "Milk", Amount: 0}, i.db)
+	t.Run("Put milk", func(st *testing.T) {
+		food := FOOD{Name: "Milk", Amount: 1}
+		putFood(&food, i.db)
+		assert.Equal(st, food.ID, 5)
 	})
 }
 
@@ -75,14 +85,11 @@ func (i *InventoryTestSuite) TearDownSuite() {
 
 func (i *InventoryTestSuite) TestPost() {
 	t := i.T()
-	postFood(FOOD{Name: "Apple", Amount: 2}, i.db)
+	food := FOOD{Name: "Apple", Amount: 2}
+	postFood(&food, i.db)
+	assert.Equal(t, food.ID, 2)
 
-	all := getFoods(i.db)
-
-	for i := 0; i < len(all); i++ {
-		if all[i].Name == "Apple" {
-			assert.Equal(t, all[i].ID, 1)
-			assert.Equal(t, all[i].Amount, 2)
-		}
-	}
+	fetched := getFood(i.db, food, false)
+	assert.Equal(t, fetched.ID, 2)
+	assert.Equal(t, fetched.Amount, 2)
 }

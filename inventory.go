@@ -39,14 +39,16 @@ func getFoods(db *sql.DB) []FOOD {
 
 	rows, err := db.Query("SELECT id, name, amount FROM food")
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
+		return []FOOD{}
 	}
 	defer rows.Close()
 
 	for rows.Next() {
 		err := rows.Scan(&id, &name, &amount)
 		if err != nil {
-			log.Fatal(err)
+			log.Error(err)
+			continue
 		}
 
 		foods = append(foods, FOOD{ID: id, Name: name, Amount: amount})
@@ -55,58 +57,90 @@ func getFoods(db *sql.DB) []FOOD {
 	return foods
 }
 
-func exists(db *sql.DB, food FOOD, requireIDMatch bool) bool {
-	if food.ID < 0 {
-		log.Error("POST request made with invalid (negative) id")
-		return false
-	}
-
-	res, err := db.Query("SELECT id, name FROM food WHERE name = " + food.Name)
+func getFood(db *sql.DB, food FOOD, requireIDMatch bool) *FOOD {
+	log.Debug("Query: " + `SELECT id, name, amount FROM food WHERE name='` + food.Name + `'`)
+	res, err := db.Query(`SELECT id, name, amount FROM food WHERE name='` + food.Name + `'`)
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
+		return nil
 	}
 
 	if !res.Next() {
-		return false
+		return nil
 	}
 
 	var id int
-	var nameOut string
-	err = res.Scan(&id, &nameOut)
+	var name string
+	var amount int
+	err = res.Scan(&id, &name, &amount)
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
+		return nil
 	}
 
-	return food.ID == id || !requireIDMatch
+	log.Debug("ID scan result: name=" + name + "; id=" + strconv.Itoa(id))
+
+	// also check unique if requireIDMatch
+	if requireIDMatch && food.ID != id {
+		return nil
+	} else {
+		return &FOOD{ID: id, Name: name, Amount: amount}
+	}
 }
 
-// return value used for http response codes
-func postFood(food FOOD, db *sql.DB) {
-	// confirm item with id & name exists
-	if !exists(db, food, true) {
+func foodExists(db *sql.DB, food FOOD, requireIDMatch bool) bool {
+	return getFood(db, food, requireIDMatch) != nil
+}
+
+func postFood(food *FOOD, db *sql.DB) {
+	current := getFood(db, *food, false)
+	// TODO: allow creating with POST (same functionality as PUT)
+	// ----
+	// see https://stackoverflow.com/questions/630453/what-is-the-difference-between-post-and-put-in-http
+	// ----
+	// POST to a URL creates a child resource at a server defined URL.
+	// PUT to a URL creates/replaces the resource in its entirety at the client defined URL.
+	// PATCH to a URL updates part of the resource at that client defined URL.
+
+	// confirm item name exists (maybe also req. knowning id?)
+	if current == nil {
 		log.Info("POST request made for resource which did not exist: id=" + strconv.Itoa(food.ID) + ", name=" + food.Name)
 		panic("Not found")
 	}
 
-	log.Info("POSTing name=" + food.Name + " id=" + strconv.Itoa(food.ID))
+	// pick up ID from current -- user may not know it; only req. name as identification for now
+	log.Debug("POSTing name=" + current.Name + " id=" + strconv.Itoa(current.ID))
+	food.ID = current.ID
 
-	// update that item
-	_, err := db.Exec("UPSERT INTO food(id, name, amount) VALUES ($1, $2, $3)", food.ID, food.Name, food.Amount)
+	// update the item
+	_, err := db.Exec("UPSERT INTO food (id, name, amount) VALUES ($1, $2, $3)", current.ID, current.Name, food.Amount)
+
+	// update return (food) to accurately reflect changes
+	food = current
 	if err != nil {
-		log.Fatal(err)
+		log.Info("Error posting to DB; post may have been malformed")
+		log.Error(err)
 	}
 }
 
-func putFood(newFood FOOD, db *sql.DB) {
+// requires struct with everything except ID set; ID is set during execution to assigned ID if successful
+func putFood(newFood *FOOD, db *sql.DB) {
 
 	log.Debug("PUTting into food DB: " + newFood.Name + " " + strconv.Itoa(newFood.Amount))
 
+	if foodExists(db, *newFood, false) {
+		log.Info("PUT request made for resource which already exists: name=" + newFood.Name)
+		panic("Resource exists")
+	}
+
 	if newFood.Name != "" {
 		_, err := db.Exec("INSERT INTO food(name, amount) VALUES ($1, $2)", newFood.Name, newFood.Amount)
-		// TODO: implement resource exists panic if exists
 		if err != nil {
-			log.Fatal(err)
+			log.Info("Error putting in DB; put may have been malformed")
+			log.Error(err)
 		}
+
+		newFood.ID = getFood(db, *newFood, false).ID
 	}
 }
 
@@ -145,7 +179,7 @@ func initDB(db *sql.DB) {
 	)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
 	}
 }
 
@@ -205,7 +239,7 @@ func main() {
 			log.Error(err)
 			panic("Bad request")
 		}
-		putFood(food, db)
+		putFood(&food, db)
 	})
 	router.POST("/foods", func(c *gin.Context) {
 		var food FOOD
@@ -229,7 +263,7 @@ func main() {
 			log.Error(err)
 			panic("Bad request")
 		}
-		postFood(food, db)
+		postFood(&food, db)
 	})
 
 	// TODO: set up PKI and make this RunTLS to use https
