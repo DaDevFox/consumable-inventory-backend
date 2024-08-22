@@ -58,7 +58,8 @@ func getFoods(db *sql.DB) []FOOD {
 }
 
 func getFood(db *sql.DB, food FOOD, requireIDMatch bool) *FOOD {
-	res, err := db.Query(`SELECT id, name FROM food WHERE name=\'` + food.Name + `\'`)
+	log.Debug("Query: " + `SELECT id, name, amount FROM food WHERE name='` + food.Name + `'`)
+	res, err := db.Query(`SELECT id, name, amount FROM food WHERE name='` + food.Name + `'`)
 	if err != nil {
 		log.Error(err)
 		return nil
@@ -76,6 +77,7 @@ func getFood(db *sql.DB, food FOOD, requireIDMatch bool) *FOOD {
 		log.Error(err)
 		return nil
 	}
+	log.Info("Scan result: name=" + name + "; id=" + strconv.Itoa(id))
 
 	// also check unique if requireIDMatch
 	if requireIDMatch && food.ID != id {
@@ -89,29 +91,32 @@ func foodExists(db *sql.DB, food FOOD, requireIDMatch bool) bool {
 	return getFood(db, food, requireIDMatch) != nil
 }
 
-// return value used for http response codes
-func postFood(food FOOD, db *sql.DB) {
-	// confirm item with id & name exists
-	if !foodExists(db, food, true) {
+func postFood(food *FOOD, db *sql.DB) {
+	current := getFood(db, *food, false)
+	// confirm item name exists (maybe also req. knowning id?)
+	if current == nil {
 		log.Info("POST request made for resource which did not exist: id=" + strconv.Itoa(food.ID) + ", name=" + food.Name)
 		panic("Not found")
 	}
 
-	log.Info("POSTing name=" + food.Name + " id=" + strconv.Itoa(food.ID))
+	// pick up ID from current -- user may not know it; only req. name as identification for now
+	log.Info("POSTing name=" + current.Name + " id=" + strconv.Itoa(current.ID))
+	food.ID = current.ID
 
-	// update that item
-	_, err := db.Exec(`UPSERT INTO food (id, name, amount) VALUES ($1, \'$2\', $3)`, food.ID, food.Name, food.Amount)
+	// update the item
+	_, err := db.Exec(`UPSERT INTO food (id, name, amount) VALUES ($1, \'$2\', $3)`, current.ID, current.Name, food.Amount)
 	if err != nil {
 		log.Info("Error posting to DB; post may have been malformed")
 		log.Error(err)
 	}
 }
 
-func putFood(newFood FOOD, db *sql.DB) {
+// requires struct with everything except ID set; ID is set during execution to assigned ID if successful
+func putFood(newFood *FOOD, db *sql.DB) {
 
 	log.Debug("PUTting into food DB: " + newFood.Name + " " + strconv.Itoa(newFood.Amount))
 
-	if foodExists(db, newFood, false) {
+	if foodExists(db, *newFood, false) {
 		log.Info("PUT request made for resource which already exists: name=" + newFood.Name)
 		panic("Resource exists")
 	}
@@ -119,9 +124,11 @@ func putFood(newFood FOOD, db *sql.DB) {
 	if newFood.Name != "" {
 		_, err := db.Exec("INSERT INTO food(name, amount) VALUES ($1, $2)", newFood.Name, newFood.Amount)
 		if err != nil {
-			log.Info("Error putting in DB; post may have been malformed")
+			log.Info("Error putting in DB; put may have been malformed")
 			log.Error(err)
 		}
+
+		newFood.ID = getFood(db, *newFood, false).ID
 	}
 }
 
@@ -160,7 +167,7 @@ func initDB(db *sql.DB) {
 	)
 
 	if err != nil {
-		log.Fatal(err)
+		log.Error(err)
 	}
 }
 
@@ -220,7 +227,7 @@ func main() {
 			log.Error(err)
 			panic("Bad request")
 		}
-		putFood(food, db)
+		putFood(&food, db)
 	})
 	router.POST("/foods", func(c *gin.Context) {
 		var food FOOD
@@ -244,7 +251,7 @@ func main() {
 			log.Error(err)
 			panic("Bad request")
 		}
-		postFood(food, db)
+		postFood(&food, db)
 	})
 
 	// TODO: set up PKI and make this RunTLS to use https
