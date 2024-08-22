@@ -77,7 +77,8 @@ func getFood(db *sql.DB, food FOOD, requireIDMatch bool) *FOOD {
 		log.Error(err)
 		return nil
 	}
-	log.Info("Scan result: name=" + name + "; id=" + strconv.Itoa(id))
+
+	log.Debug("ID scan result: name=" + name + "; id=" + strconv.Itoa(id))
 
 	// also check unique if requireIDMatch
 	if requireIDMatch && food.ID != id {
@@ -93,6 +94,14 @@ func foodExists(db *sql.DB, food FOOD, requireIDMatch bool) bool {
 
 func postFood(food *FOOD, db *sql.DB) {
 	current := getFood(db, *food, false)
+	// TODO: allow creating with POST (same functionality as PUT)
+	// ----
+	// see https://stackoverflow.com/questions/630453/what-is-the-difference-between-post-and-put-in-http
+	// ----
+	// POST to a URL creates a child resource at a server defined URL.
+	// PUT to a URL creates/replaces the resource in its entirety at the client defined URL.
+	// PATCH to a URL updates part of the resource at that client defined URL.
+
 	// confirm item name exists (maybe also req. knowning id?)
 	if current == nil {
 		log.Info("POST request made for resource which did not exist: id=" + strconv.Itoa(food.ID) + ", name=" + food.Name)
@@ -100,11 +109,14 @@ func postFood(food *FOOD, db *sql.DB) {
 	}
 
 	// pick up ID from current -- user may not know it; only req. name as identification for now
-	log.Info("POSTing name=" + current.Name + " id=" + strconv.Itoa(current.ID))
+	log.Debug("POSTing name=" + current.Name + " id=" + strconv.Itoa(current.ID))
 	food.ID = current.ID
 
 	// update the item
-	_, err := db.Exec(`UPSERT INTO food (id, name, amount) VALUES ($1, \'$2\', $3)`, current.ID, current.Name, food.Amount)
+	_, err := db.Exec("UPSERT INTO food (id, name, amount) VALUES ($1, $2, $3)", current.ID, current.Name, food.Amount)
+
+	// update return (food) to accurately reflect changes
+	food = current
 	if err != nil {
 		log.Info("Error posting to DB; post may have been malformed")
 		log.Error(err)
